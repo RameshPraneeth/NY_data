@@ -1,0 +1,298 @@
+---
+title: "NYPD"
+author: "Praneeth Ramesh"
+date: "4/29/2024"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+rm(list = ls())
+library(tidyverse)
+library(lubridate)
+library(ggplot2)
+library(dplyr)
+```
+
+
+
+## Introduction
+
+As a young man considering a move to New York City, I am conflicted. On one hand I am very excited about the opportunities presented in the city on the other hand I hear so much about how its a dangerous place. Given the prevalent narratives about the dangers of living in New York, I decided that this would be a great opportunity to look into the validity of that opinion. This analysis will not just help me decide if I would want to live there, but also allow me to educate myself and others on crime trends. That education plays a big role in how much money and resources are allocated on stopping crime so it is worthwhile information to pursue. Some topics that we will investigate are whether or not crime is rising and the demographics of NYC crime victims. 
+
+
+
+## Data Collection
+
+First let's start with the open source data for this analysis is from the NYPD. It is publicly available to anyone to download and use. We will download and turn it into a data frame so that we can utilize it easily. 
+
+
+```{r,results ='hide', warning=FALSE}
+data_url <- "https://data.cityofnewyork.us/api/views/833y-fsy8/rows.csv?accessType=DOWNLOAD"
+s_data <- read.csv(data_url)
+s_data <- data_frame(s_data)
+
+```
+
+
+
+## Viewing the Data
+
+We will now begin to looks at the data. As we notice a few problems, we will start to tidy the data into what we need. 
+
+
+```{r , echo=FALSE}
+head(s_data)
+```
+
+
+
+## Data Cleaning
+
+```{r, echo=FALSE}
+
+
+s_data$OCCUR_DATE <- mdy(s_data$OCCUR_DATE)
+
+
+s_data <- select(s_data, -c(PERP_AGE_GROUP, PERP_SEX, PERP_RACE))
+
+s_data <- s_data %>%
+  select(-c(X_COORD_CD, Y_COORD_CD, Latitude, Longitude, Lon_Lat))
+
+l_columns <- c("LOC_OF_OCCUR_DESC", "LOCATION_DESC", "LOC_CLASSFCTN_DESC")
+
+
+
+s_data[l_columns] <- s_data[l_columns] %>%
+  lapply(function(x) {
+    x[x == "(null)" | x == ""] <- NA  
+    return(x)
+  })
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+## Snapshot of the Crime in NYC
+
+After cleaning we will now take a look at some statistics about the crimes in the city. 
+
+
+```{r , echo=FALSE}
+
+s_data$STATISTICAL_MURDER_FLAG <- (s_data$STATISTICAL_MURDER_FLAG == "true")
+
+t_shootings <- nrow(s_data)
+t_murders <- sum(s_data$STATISTICAL_MURDER_FLAG)
+
+
+borough_totals <- s_data %>%
+  group_by(BORO) %>%
+  summarise(t_shootings = n(), .groups = 'drop',
+            murders = sum(STATISTICAL_MURDER_FLAG))
+
+borough_totals <- data.frame(borough_totals)
+
+
+borough_totals$death_rate = (borough_totals$murders) / (borough_totals$t_shootings)
+
+
+
+print(paste("Total shootings in NYC:", t_shootings))
+print(paste("Total murders in NYC:", t_murders))
+
+```
+
+As you can see the total number of murders and shootings are both in the thousands in NYC since 2006 which is a high number, ideally it should be as close to 0 as possible. We do have to remember though that NYC does have more people than any other city in America. 
+
+
+
+
+## Visualizing
+
+Let's break down those numbers. Now that we have calculated the information we want, we can now take a look at it in a visualization on a graph. Down below is the breakup by borough.
+
+
+
+## Analysis of Shootings
+```{r , echo=FALSE}
+
+
+ggplot(borough_totals, aes(x = BORO, y = t_shootings)) +
+  geom_bar(stat = "identity", fill = "purple") +
+  labs(title = "Total Shootings by Borough in NYC", x ="Borough", y ="Total Shootings") 
+
+
+```
+
+
+The above plot is a interesting snapshot of where the shootings took place in NYC. No conclusions should be made on any relationships with just this data, since we don't have the populations of the boroughs in the dataset.
+
+
+
+Another area to investigate would be the fatality rate of the shootings to see if any of the boroughs particularly stand out. I previously mutated the data and added the 'death_rate' column to the table 'borough_totals'
+
+
+```{r, echo=FALSE}
+
+print(borough_totals)
+```
+
+
+
+
+## New Direction
+
+
+Another area I am interested in is the demographics of the victims of NYC shootings. I think there can be some useful information to attain by breaking this area down. 
+
+```{r, echo=FALSE}
+
+
+# Summarizing data by sex and race
+v_demo <- s_data %>%
+  group_by(VIC_SEX, VIC_RACE) %>%
+  summarise(Total_Victims = n(), .groups = 'drop')  # Ensure you drop groups for a clean tibble
+
+
+v_demo <- v_demo %>%
+  filter(Total_Victims>= 50)
+
+
+
+
+# View the summary to check data
+print(v_demo)
+
+```
+
+
+
+
+
+
+
+
+
+
+
+```{r, echo=FALSE}
+# Bar graph of victims by sex and race
+
+
+visual2 <- ggplot(v_demo, aes(x = VIC_SEX, y = Total_Victims, fill = VIC_RACE))+
+  geom_bar(stat = "identity", position = "dodge") +
+  labs(title = "Victims of Shootings by Sex and Race", x = "Sex of Victim", y = "Total Number of Victims")
+
+  
+  
+plot(visual2)
+```
+
+
+
+When we breakdown the shooting victims numbers there are some interesting numbers that pop out. It seems that the highest demographic by far are black men in terms of being victims of crime. For women, black women are at the top of that category as well. Another interesting point of note is that there are more races of men that even ended up on the final table, since it does seem like there are more men that are victims of shootings than women. Understanding who is most affected by these incidents is crucial. This way we can help people in the most effective manner. 
+
+
+
+
+
+
+
+
+## Deeper Look
+
+Now that we have viewed the data in a few different ways lets deep dive into one area and try to make an assessment. Let's check to see if there is change in the amount of shootings in NYC over time. To do this we need to convert the date data into something we can use. Not only that we also need to made a linear regression model.
+
+
+
+```{r , echo=FALSE}
+
+m_shootings <- s_data %>%
+  mutate(ym = floor_date(OCCUR_DATE, "month")) %>%
+  group_by(ym) %>%
+  summarise(t_shootings = n(), .groups = 'drop')
+
+m_shootings <- m_shootings %>%
+  mutate(m_total = interval(start = min(ym),end = ym)/months(1))
+
+
+
+ggplot(m_shootings, aes(x = m_total, y = t_shootings)) +
+  geom_point() +  # This adds the data points
+  geom_smooth(method = "lm", se = TRUE, color = "red") +  # This adds a regression line with confidence intervals
+  labs(title = "Monthly Shootings Over Time Since 2006",
+       x = "Months Since 2006",
+       y = "Total Shootings")
+
+
+```
+
+
+
+## Analyzing the Trend
+
+Looking at the data seems to slow a slight but real decline in shootings over time. While there definitely seem to be spikes and dips in the data, it does seem like since 2006 we safe made strides to make NYC safer. To be sure though lets try running a hypothesis test.
+
+
+
+```{r , echo=FALSE}
+m <- lm(t_shootings ~ m_total, data = m_shootings)
+summary(m)
+```
+
+
+Looking at the summary for our variable we notice something pretty noteworthy. We can see that there is a negative value for the coefficient, while denotes a negative slope. Furthermore, when we look at the p-value we see that's a tiny number far lower than out 0.05 threshold. This p-value will lead us to rejecting the null hypothesis. Because that is the case we can conclude that there has been a definite negative trend in shootings per month since 2006.
+
+
+
+
+
+
+
+## Bias
+
+
+Before we move onto the conclusion it is important to note the possible cases of bias in the data. One factor to consider would be under-reporting. For example, If a victim doesn't want to report their shooting, perhaps they were participating in illicit activities, that shooting would not be in the dataset since no on reported it. Also we have to factor in personal bias, which may influence what we look at and how we look at unfavorable data. As someone who is fond of NYC, I have a vested interest in trying to find positive trends in the data. 
+
+## Conclusion
+
+This exercise was illuminating for many reasons. We were able to learn a little about the breakdown of crime in NYC. We looked into demographics of victims, and also into the geographical data on the shootings. While it was unfortunate to see racial disparities in victims of crimes, we did find some positive news. We managed to find a relationship that shows shootings in NYC are on a downward trend. On a personal note, doing this research has definitely eased some of my fears about living in NYC, since it does seem like its constantly improving in safety. Moving forward, I will be pushing back on the misinformation I hear on how New York City is becoming a more dangerous place to live.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
